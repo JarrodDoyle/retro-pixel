@@ -1,3 +1,5 @@
+use std::{ffi::OsStr, path::PathBuf};
+
 use clap::Parser;
 use image::{ImageError, ImageReader, RgbImage, imageops::FilterType};
 use itertools::Itertools;
@@ -7,11 +9,11 @@ use palette::{IntoColor, Oklab, Srgb, cast::FromComponents, color_difference::Eu
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(short, long)]
-    palette_path: String,
+    palette_path: PathBuf,
     #[arg(short, long)]
-    input_path: String,
+    input_path: PathBuf,
     #[arg(short, long)]
-    output_path: String,
+    output_path: Option<PathBuf>,
     #[arg(short = 's', long, default_value_t = 4)]
     pixel_scale: u32,
     #[arg(short, long)]
@@ -117,7 +119,7 @@ fn main() -> Result<(), ImageError> {
     let args = Args::parse();
     dbg!(&args);
 
-    let image = ImageReader::open(args.input_path)?.decode()?;
+    let image = ImageReader::open(&args.input_path)?.decode()?;
     let image = image.resize(
         image.width() / args.pixel_scale,
         image.height() / args.pixel_scale,
@@ -140,6 +142,19 @@ fn main() -> Result<(), ImageError> {
         apply_palette(&mut output_image, &palette_rgb);
     }
 
-    output_image.save(args.output_path)?;
+    let output_path = match args.output_path {
+        Some(path) => path,
+        None => {
+            let mut file_name = args.input_path.file_prefix().unwrap_or_default().to_owned();
+            file_name.push(OsStr::new("_output"));
+            let mut path = args.input_path.with_file_name(file_name);
+            if let Some(ext) = args.input_path.extension() {
+                path.set_extension(ext);
+            }
+            path
+        }
+    };
+
+    output_image.save(output_path)?;
     Ok(())
 }
