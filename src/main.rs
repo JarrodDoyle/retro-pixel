@@ -1,13 +1,24 @@
+use clap::Parser;
 use image::{ImageError, ImageReader, RgbImage, imageops::FilterType};
 use itertools::Itertools;
 use palette::{IntoColor, Oklab, Srgb, cast::FromComponents, color_difference::EuclideanDistance};
 
-const PALETTE_PATH: &str = "./res/palette.png";
-const INPUT_PATH: &str = "./res/input.png";
-const OUTPUT_PATH: &str = "./res/output.png";
-const DOWNSCALE: u32 = 4;
-const DITHER_EXPONENT: u32 = 2;
-const DITHER_THRESHOLD: f32 = 0.05;
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    palette_path: String,
+    #[arg(short, long)]
+    input_path: String,
+    #[arg(short, long)]
+    output_path: String,
+    #[arg(short = 's', long, default_value_t = 4)]
+    pixel_scale: u32,
+    #[arg(short = 'e', long, default_value_t = 2)]
+    dither_exponent: u32,
+    #[arg(short = 't', long, default_value_t = 0.05)]
+    dither_threshold: f32,
+}
 
 // Modified slightly from https://nelari.us/post/quick_and_dirty_dithering/#bayer-matrix
 struct BayerMatrix {
@@ -60,7 +71,12 @@ fn apply_palette(image: &mut RgbImage, palette: &Vec<Oklab>) {
 }
 
 // Pattern dithering: https://bisqwit.iki.fi/story/howto/dither/jy/#PatternDitheringThePatentedAlgorithmUsedInAdobePhotoshop
-fn apply_palette_dithered(image: &mut RgbImage, palette: &Vec<Oklab>, bayer_matrix: &BayerMatrix) {
+fn apply_palette_dithered(
+    image: &mut RgbImage,
+    palette: &Vec<Oklab>,
+    bayer_matrix: &BayerMatrix,
+    threshold: f32,
+) {
     for (x, y, pixel) in image.enumerate_pixels_mut() {
         let pixel_colour: Oklab = Srgb::from(pixel.0).into_linear().into_color();
 
@@ -68,7 +84,7 @@ fn apply_palette_dithered(image: &mut RgbImage, palette: &Vec<Oklab>, bayer_matr
         let mut error = Oklab::new(0.0, 0.0, 0.0);
         let matrix_element_count = bayer_matrix.size.pow(2);
         for _ in 0..matrix_element_count {
-            let sample = pixel_colour + error * DITHER_THRESHOLD;
+            let sample = pixel_colour + error * threshold;
             let candidate = get_closest_palette_colour(palette, sample);
             candidates.push(candidate);
             error += pixel_colour - candidate;
@@ -96,18 +112,27 @@ fn get_closest_palette_colour(palette: &Vec<Oklab>, colour: Oklab) -> Oklab {
 }
 
 fn main() -> Result<(), ImageError> {
-    let image = ImageReader::open(INPUT_PATH)?.decode()?;
+    let args = Args::parse();
+    dbg!(&args);
+
+    let image = ImageReader::open(args.input_path)?.decode()?;
     let image = image.resize(
-        image.width() / DOWNSCALE,
-        image.height() / DOWNSCALE,
+        image.width() / args.pixel_scale,
+        image.height() / args.pixel_scale,
         FilterType::Nearest,
     );
 
-    let bayer_matrix = BayerMatrix::new(DITHER_EXPONENT);
-    let palette_rgb = palette_from_image(&ImageReader::open(PALETTE_PATH)?.decode()?.into_rgb8());
+    let bayer_matrix = BayerMatrix::new(args.dither_exponent);
+    let palette_image = ImageReader::open(args.palette_path)?.decode()?.into_rgb8();
+    let palette_rgb = palette_from_image(&palette_image);
     let mut output_image = image.into_rgb8();
-    apply_palette_dithered(&mut output_image, &palette_rgb, &bayer_matrix);
+    apply_palette_dithered(
+        &mut output_image,
+        &palette_rgb,
+        &bayer_matrix,
+        args.dither_threshold,
+    );
 
-    output_image.save(OUTPUT_PATH)?;
+    output_image.save(args.output_path)?;
     Ok(())
 }
