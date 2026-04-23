@@ -119,7 +119,6 @@ fn get_closest_palette_colour(palette: &Vec<Oklab>, colour: Oklab) -> Oklab {
 
 fn main() -> Result<(), ImageError> {
     let args = Args::parse();
-    dbg!(&args);
 
     let image = ImageReader::open(&args.input_path)?.decode()?;
     let image = image.resize(
