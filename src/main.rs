@@ -32,11 +32,11 @@ struct Args {
 
     #[arg(long)]
     hue: Option<i32>,
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     saturation: Option<i32>,
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     brightness: Option<i32>,
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     contrast: Option<i32>,
 }
 
