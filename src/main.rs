@@ -3,7 +3,11 @@ use std::{ffi::OsStr, fs, path::PathBuf};
 use clap::Parser;
 use image::{ImageError, ImageFormat, ImageReader, RgbImage, imageops::FilterType};
 use itertools::Itertools;
-use palette::{IntoColor, Oklab, Srgb, cast::FromComponents, color_difference::EuclideanDistance};
+use palette::{
+    DarkenAssign, IntoColor, IntoColorMut, LightenAssign, LinSrgb, Okhsl, Oklab, Oklch,
+    SaturateAssign, ShiftHueAssign, Srgb, cast::FromComponents,
+    color_difference::EuclideanDistance,
+};
 use rayon::prelude::*;
 
 #[derive(Parser, Debug)]
@@ -25,6 +29,15 @@ struct Args {
     dither_threshold: f32,
     #[arg(short, long)]
     batch: bool,
+
+    #[arg(long)]
+    hue: Option<i32>,
+    #[arg(long)]
+    saturation: Option<i32>,
+    #[arg(long)]
+    brightness: Option<i32>,
+    #[arg(long)]
+    contrast: Option<i32>,
 }
 
 // Modified slightly from https://nelari.us/post/quick_and_dirty_dithering/#bayer-matrix
@@ -61,15 +74,42 @@ impl BayerMatrix {
     }
 }
 
-fn palette_from_image(image: &RgbImage) -> Vec<Oklab> {
-    let mut colours: Vec<Oklab> = vec![];
+fn palette_from_image(image: &RgbImage) -> Vec<LinSrgb> {
+    let mut colours: Vec<LinSrgb> = vec![];
     for pixel in <&[Srgb<u8>]>::from_components(&**image) {
-        colours.push(pixel.into_linear().into_color());
+        colours.push(pixel.into_linear());
     }
     colours
 }
 
-fn apply_palette(pixel_colour: &mut Oklab, palette: &Vec<Oklab>) {
+fn apply_contrast(colour: &mut LinSrgb, contrast: i32) {
+    let contrast = contrast.clamp(-100, 100) as f32 / 100.0;
+    let percentage = (contrast + 1.0).powi(2);
+    *colour = (*colour - 0.5) * percentage + 0.5;
+}
+
+fn apply_brightness(colour: &mut LinSrgb, brightness: i32) {
+    let brightness = brightness.clamp(-100, 100) as f32 / 100.0;
+    let colour_oklab: &mut Oklab = &mut colour.into_color_mut();
+    if brightness.signum() > 0.0 {
+        colour_oklab.lighten_assign(brightness);
+    } else {
+        colour_oklab.darken_assign(brightness);
+    }
+}
+
+fn apply_hue(colour: &mut LinSrgb, hue: i32) {
+    let colour_oklch: &mut Oklch = &mut colour.into_color_mut();
+    colour_oklch.shift_hue_assign(hue as f32);
+}
+
+fn apply_saturation(colour: &mut LinSrgb, saturation: i32) {
+    let saturation = saturation.clamp(-100, 100) as f32 / 100.0;
+    let colour_okhsl: &mut Okhsl = &mut colour.into_color_mut();
+    colour_okhsl.saturate_assign(saturation);
+}
+
+fn apply_palette(pixel_colour: &mut LinSrgb, palette: &Vec<LinSrgb>) {
     *pixel_colour = get_closest_palette_colour(palette, pixel_colour);
 }
 
@@ -77,27 +117,27 @@ fn apply_palette(pixel_colour: &mut Oklab, palette: &Vec<Oklab>) {
 fn apply_palette_dithered(
     x: u32,
     y: u32,
-    pixel_colour: &mut Oklab,
-    palette: &Vec<Oklab>,
+    pixel_colour: &mut LinSrgb,
+    palette: &Vec<LinSrgb>,
     bayer_matrix: &BayerMatrix,
     threshold: f32,
 ) {
     let mut candidates: Vec<Oklab> = vec![];
-    let mut error = Oklab::new(0.0, 0.0, 0.0);
+    let mut error = LinSrgb::new(0.0, 0.0, 0.0);
     let matrix_element_count = bayer_matrix.size.pow(2);
     for _ in 0..matrix_element_count {
         let sample = *pixel_colour + error * threshold;
         let candidate = get_closest_palette_colour(palette, &sample);
-        candidates.push(candidate);
+        candidates.push(candidate.into_color());
         error += *pixel_colour - candidate;
     }
 
     candidates.sort_by(|Oklab { l: l1, .. }, Oklab { l: l2, .. }| l1.partial_cmp(l2).unwrap());
-    *pixel_colour = candidates[bayer_matrix.index(x, y) as usize];
+    *pixel_colour = candidates[bayer_matrix.index(x, y) as usize].into_color();
 }
 
-fn get_closest_palette_colour(palette: &Vec<Oklab>, colour: &Oklab) -> Oklab {
-    let mut closest_colour = Oklab::new(0.0, 0.0, 0.0);
+fn get_closest_palette_colour(palette: &Vec<LinSrgb>, colour: &LinSrgb) -> LinSrgb {
+    let mut closest_colour = LinSrgb::new(0.0, 0.0, 0.0);
     let mut closest_distance_squared = f32::MAX;
     for palette_colour in palette {
         let distance = colour.distance_squared(*palette_colour);
@@ -160,28 +200,43 @@ fn main() -> Result<(), ImageError> {
             image.height() / args.pixel_scale,
             FilterType::Nearest,
         );
-        let mut output_image = image.into_rgb8();
 
+        let mut output_image = image.into_rgb8();
         output_image
             .par_enumerate_pixels_mut()
             .for_each(|(x, y, pixel)| {
-                let mut pixel_colour: Oklab = Srgb::from(pixel.0).into_linear().into_color();
+                let mut colour_linear = Srgb::from(pixel.0).into_linear::<f32>();
+
+                if let Some(contrast) = args.contrast {
+                    apply_contrast(&mut colour_linear, contrast);
+                }
+
+                if let Some(brightness) = args.brightness {
+                    apply_brightness(&mut colour_linear, brightness);
+                }
+
+                if let Some(hue) = args.hue {
+                    apply_hue(&mut colour_linear, hue);
+                }
+
+                if let Some(saturation) = args.saturation {
+                    apply_saturation(&mut colour_linear, saturation);
+                }
 
                 if args.dither {
                     apply_palette_dithered(
                         x,
                         y,
-                        &mut pixel_colour,
+                        &mut colour_linear,
                         &palette,
                         &bayer_matrix,
                         args.dither_threshold,
                     );
                 } else {
-                    apply_palette(&mut pixel_colour, &palette);
+                    apply_palette(&mut colour_linear, &palette);
                 }
 
-                let srgb_colour = Srgb::from_linear(pixel_colour.into_color());
-                *pixel = image::Rgb([srgb_colour.red, srgb_colour.green, srgb_colour.blue]);
+                *pixel = image::Rgb(Srgb::from_linear(colour_linear).into());
             });
 
         output_image.save(output_path)?;
