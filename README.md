@@ -5,7 +5,13 @@
 
 ## Description
 
-RetroPixel is a command line (and hopefully soon GUI) tool for generating pixelised and palettised images.
+RetroPixel is a GUI and CLI tool for generating pixelised and palettised images.
+
+<p align="center">
+  <img src="media/gui_Bricks014.png" width="100%"/>
+</p>
+
+*"Bricks014" from AmbientCG pixelised with the Thief: Gold palette in the GUI.*
 
 <p align="center">
   <img src="media/Planks023B.png" width="45%" />
@@ -18,7 +24,10 @@ RetroPixel is a command line (and hopefully soon GUI) tool for generating pixeli
 </p>
 
 *"Planks023B" and "Rock051" from AmbientCG pixelised with the Thief: Gold palette.*
+
 ## Usage
+
+RetroPixel has both a GUI and a CLI. Launching the executable without any arguments will start the GUI, otherwise the CLI is used:
 
 ```
 A simple tool for generating pixelised and palettised images
