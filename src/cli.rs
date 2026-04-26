@@ -15,7 +15,7 @@ struct Args {
     input_path: PathBuf,
     #[arg(short, long)]
     output_path: Option<PathBuf>,
-    #[arg(short = 's', long, default_value_t = 4)]
+    #[arg(short = 's', long, default_value_t = 4, value_parser = value_parser!(u32).range(1..=16))]
     pixel_scale: u32,
     #[arg(short, long)]
     dither: bool,
