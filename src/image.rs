@@ -71,7 +71,7 @@ pub fn apply_saturation(colour: &mut LinSrgb, saturation: i32) {
     colour_okhsl.saturate_assign(saturation);
 }
 
-pub fn apply_palette(pixel_colour: &mut LinSrgb, palette: &Vec<LinSrgb>) {
+pub fn apply_palette(pixel_colour: &mut LinSrgb, palette: &[LinSrgb]) {
     *pixel_colour = get_closest_palette_colour(palette, pixel_colour);
 }
 
@@ -80,7 +80,7 @@ pub fn apply_palette_dithered(
     x: u32,
     y: u32,
     pixel_colour: &mut LinSrgb,
-    palette: &Vec<LinSrgb>,
+    palette: &[LinSrgb],
     bayer_matrix: &BayerMatrix,
     threshold: f32,
 ) {
@@ -98,7 +98,7 @@ pub fn apply_palette_dithered(
     *pixel_colour = candidates[bayer_matrix.index(x, y) as usize].into_color();
 }
 
-pub fn get_closest_palette_colour(palette: &Vec<LinSrgb>, colour: &LinSrgb) -> LinSrgb {
+pub fn get_closest_palette_colour(palette: &[LinSrgb], colour: &LinSrgb) -> LinSrgb {
     let mut closest_colour = LinSrgb::new(0.0, 0.0, 0.0);
     let mut closest_distance_squared = f32::MAX;
     for palette_colour in palette {

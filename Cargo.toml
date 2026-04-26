@@ -8,8 +8,11 @@ repository = "https://github.com/JarrodDoyle/retro-pixel"
 description = "A simple tool for generating pixelised and palettised images"
 
 [dependencies]
+anyhow = "1.0.102"
 clap = { version = "4.6.1", features = ["derive"] }
+eframe = "0.34.1"
 image = "0.25.10"
 itertools = "0.14.0"
 palette = "0.7.6"
 rayon = "1.12.0"
+rfd = "0.17.2"
